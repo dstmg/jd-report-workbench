@@ -1,0 +1,9 @@
+.venv/
+data/
+__pycache__/
+config.local.json
+*.log
+交付/
+*.zip
+.pytest_cache/
+config.local.tmp

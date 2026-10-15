@@ -1,0 +1,9 @@
+{
+  "account_name": "",
+  "account_id": "",
+  "window": 30,
+  "attribution": "下单",
+  "gifts": false,
+  "order_state": "成交订单",
+  "alerts_enabled": false
+}

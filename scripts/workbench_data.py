@@ -22,12 +22,16 @@ def load_data(root=ROOT):
             if result['sha256']!=item['sha256']:raise ValueError(f'文件哈希不符：{path.name}')
             with path.open(encoding='utf-8-sig',newline='') as stream:
                 reader=csv.DictReader(stream); rows=list(reader); fields=reader.fieldnames
-            task=json.loads(Path(item['task']).read_text(encoding='utf-8-sig')) if Path(item['task']).exists() else {}
-            identity=task.get('identity',{})
+            task=json.loads(Path(item['task']).read_text(encoding='utf-8-sig')) if item.get('task') and Path(item['task']).exists() else {}
+            identity=item.get('identity') or task.get('identity',{})
             if identity:
                 if any(identity.get(k)!=value for k,value in [('family',item['family']),('dimension',item['dimension']),('start',document['start']),('end',document['end'])]):raise ValueError('报表任务身份与清单不符')
                 account_ids.add(identity.get('account_id'))
             reports.append({'key':item['family']+'/'+item['dimension'],'family':item['family'],'dimension':item['dimension'],'daily':item['daily'],'fields':fields,'rows':rows,'sha256':result['sha256'],'file':path.name,'checks':result['roi_checks'],'identity':identity})
         if len(account_ids)>1:raise ValueError('同周期报表混入多个账户，停止汇总')
-        periods.append({'key':document['start']+'_'+document['end'],'start':document['start'],'end':document['end'],'reports':reports})
+        available=len(reports);known={r['key'] for r in reports};reference=reports[0]['identity'] if reports else {}
+        for spec in json.loads((root/'report_catalog.json').read_text(encoding='utf-8')):
+            if spec['family']+'/'+spec['dimension'] not in known:
+                reports.append({'key':spec['family']+'/'+spec['dimension'],'family':spec['family'],'dimension':spec['dimension'],'fields':spec['fields'],'rows':[],'daily':spec['family']=='账户报表','available':False,'identity':reference,'checks':0,'sha256':'','file':'未导入'})
+        periods.append({'key':document['start']+'_'+document['end'],'start':document['start'],'end':document['end'],'available_reports':available,'reports':reports})
     return {'periods':periods,'notice':'单文件日期、哈希和内部指标校验；不代表账户账单对账。'}

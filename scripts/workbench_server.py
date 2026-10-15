@@ -7,6 +7,8 @@ from pathlib import Path
 from workbench_data import load_data,ROOT
 from local_config import read_config,save_config
 from demo_data import build_demo
+from manual_import import preview,import_files
+from workbench_collect import selection
 WEB=ROOT/'web'
 LOCK=threading.Lock()
 JOB={'state':'idle','message':'尚未启动采集'}
@@ -39,22 +41,29 @@ class Handler(BaseHTTPRequestHandler):
             self.write_json({'error':'仅允许本机工作台请求'},403);return
         try:
             size=int(self.headers.get('Content-Length','0'))
-            if not 0<size<8192:raise ValueError('请求大小无效')
+            limit=32*1024*1024 if urlsplit(self.path).path.startswith('/api/import/') else 8192
+            if not 0<size<limit:raise ValueError('请求过大：批次最多约24MB原文件，请分批导入')
             payload=json.loads(self.rfile.read(size));path=urlsplit(self.path).path
+            if path in ('/api/import/preview','/api/import/confirm'):
+                with LOCK:
+                    if JOB['state']=='running':raise ValueError('采集运行中不能同时导入')
+                    result=preview(payload) if path.endswith('preview') else import_files(payload)
+                self.write_json(result);return
             if path=='/api/config':
                 with LOCK:
                     if JOB['state']=='running':raise ValueError('采集中不能修改账户')
                     save_config(payload.get('account'),payload.get('account_id'))
                 self.write_json({'message':'目标账户已保存到本机；不含登录凭证'});return
             if path=='/api/collect':
+                accounts,effects=selection(payload)
                 start=date.fromisoformat(payload['start']);end=date.fromisoformat(payload['end'])
                 if start>end or (end-start).days>365 or end>=date.today():raise ValueError('请选择昨天或更早日期，且不超过366天')
                 if payload.get('login_confirmed') is not True:raise ValueError('请先人工核对登录')
                 with LOCK:
                     if JOB['state']=='running':raise ValueError('已有采集任务正在进行')
-                    JOB={'state':'running','message':'正在核验已有任务，先生成全部报表，再统一下载','lines':[],'start':payload['start'],'end':payload['end']}
+                    JOB={'state':'running','message':f'正在核验已有任务，本次选择{len(accounts)+len(effects)}份，先生成再统一下载','lines':[],'start':payload['start'],'end':payload['end'],'scope':payload.get('scope','all')}
                     persist_job()
-                    threading.Thread(target=run_job,args=({'start':payload['start'],'end':payload['end']},),daemon=True).start()
+                    threading.Thread(target=run_job,args=({'start':payload['start'],'end':payload['end'],'scope':payload.get('scope','all')},),daemon=True).start()
                 self.write_json({'message':'采集已启动'});return
             if path not in ('/api/browser','/api/shortcut'):self.write_json({'error':'未知操作'},404);return
             with LOCK:
@@ -78,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
                 body=json.dumps({'account':config.get('account_name'),'account_id':config.get('account_id')},ensure_ascii=False).encode();mime='application/json'
             elif path=='/api/data':body=json.dumps(load_data(),ensure_ascii=False).encode();mime='application/json'
             elif path=='/api/demo':body=json.dumps(build_demo(),ensure_ascii=False).encode();mime='application/json'
-            elif path in ('/','/app.js','/jd-plan.js','/style.css'):
+            elif path in ('/','/app.js','/jd-plan.js','/manual-import.js','/style.css'):
                 file=WEB/('index.html' if path=='/' else path[1:]);body=file.read_bytes();mime=mimetypes.guess_type(file.name)[0] or 'text/plain'
             else:self.send_error(404);return
             self.send_response(200);self.send_header('Content-Type',mime+'; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'");self.end_headers();self.wfile.write(body)

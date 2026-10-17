@@ -13,7 +13,7 @@ async def main():
         shutil.copy2(root/'report_catalog.json',target/'report_catalog.json')
         fixture=ManualImport();fixture.setUp()
         try:
-            request=fixture.request()
+            request=fixture.request();plan_request=fixture.request('计划')
         finally:fixture.tearDown()
         process=subprocess.Popen([sys.executable,str(target/'scripts/workbench_server.py'),'--port','5196'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         try:
@@ -43,6 +43,16 @@ async def main():
                     await page.locator('#importMessage').filter(has_text='新增1份').wait_for()
                     await page.locator('[data-nav="0"]').click();assert '13 份缺失' in await page.locator('#content').inner_text()
                     await page.locator('[data-nav="6"]').click();assert '尚无已导入报表' in await page.locator('#content').inner_text()
+                    await page.locator('[data-nav="7"]').click();assert '计划报表尚未采集或导入' in await page.locator('#content').inner_text()
+                    await page.locator('[data-nav="5"]').click()
+                    await page.locator('#importFiles').set_input_files({'name':plan_request['files'][0]['name'],'mimeType':'text/csv','buffer':base64.b64decode(plan_request['files'][0]['content'])})
+                    await page.locator('#previewImport').click();await page.locator('[data-import-index]').wait_for()
+                    await page.locator('#importConfirmed').check();await page.locator('#confirmImport').click()
+                    await page.locator('#importMessage').filter(has_text='新增1份').wait_for()
+                    await page.locator('[data-nav="7"]').click();await page.locator('[data-plan]').first.click()
+                    await page.locator('[data-jd-tab="region"]').click();assert '效果报表/地域尚未采集或导入' in await page.locator('#content').inner_text()
+                    await page.locator('[data-jd-tab="terms"]').click();assert '账户报表/关键词尚未采集或导入' in await page.locator('#content').inner_text()
+                    await page.locator('[data-jd-tab="attention"]').click();assert '未导入' in await page.locator('#content').inner_text()
                     assert not errors,errors
                     print('Manual import UI passed: preview, confirm, partial coverage, missing effect report; no page errors')
                 finally:await browser.close()

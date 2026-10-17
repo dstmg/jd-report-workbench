@@ -5,7 +5,7 @@ from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlsplit
 from pathlib import Path
 from workbench_data import load_data,ROOT
-from local_config import read_config,save_config
+from local_config import read_config,save_config,require_config
 from demo_data import build_demo
 from manual_import import preview,import_files
 from workbench_collect import selection
@@ -47,6 +47,7 @@ class Handler(BaseHTTPRequestHandler):
             limit=32*1024*1024 if urlsplit(self.path).path.startswith('/api/import/') else 8192
             if not 0<size<limit:raise ValueError('请求过大：批次最多约24MB原文件，请分批导入')
             payload=json.loads(self.rfile.read(size));path=urlsplit(self.path).path
+            if not isinstance(payload,dict):raise ValueError('请求内容必须是JSON对象')
             if path in ('/api/import/preview','/api/import/confirm'):
                 with LOCK:
                     if JOB['state']=='running':raise ValueError('采集运行中不能同时导入')
@@ -62,6 +63,7 @@ class Handler(BaseHTTPRequestHandler):
                 start=date.fromisoformat(payload['start']);end=date.fromisoformat(payload['end'])
                 if start>end or (end-start).days>365 or end>=date.today():raise ValueError('请选择昨天或更早日期，且不超过366天')
                 if payload.get('login_confirmed') is not True:raise ValueError('请先人工核对登录')
+                require_config()
                 with LOCK:
                     if JOB['state']=='running':raise ValueError('已有采集任务正在进行')
                     JOB={'state':'running','message':f'正在核验已有任务，本次选择{len(accounts)+len(effects)}份，先生成再统一下载','lines':[],'start':payload['start'],'end':payload['end'],'scope':payload.get('scope','all')}

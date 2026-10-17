@@ -4,6 +4,13 @@ from manual_import import preview,import_files
 from workbench_data import load_data
 ROOT=Path(__file__).resolve().parents[1]
 class ManualImport(unittest.TestCase):
+    def test_manual_cannot_merge_into_automatic_snapshot(self):
+        result=import_files(self.request(),self.root)
+        manifest=next((self.root/'data/reports').glob('*/校验清单.json'))
+        doc=json.loads(manifest.read_text(encoding='utf-8'));doc['reports'][0]['source']='automatic'
+        manifest.write_text(json.dumps(doc,ensure_ascii=False),encoding='utf-8');before=manifest.read_bytes()
+        with self.assertRaisesRegex(ValueError,'自动采集快照'):import_files(self.request('计划'),self.root)
+        self.assertEqual(manifest.read_bytes(),before)
     def test_collection_scopes(self):
         from workbench_collect import selection
         self.assertEqual(selection({'scope':'plan'}),(['计划'],[]))

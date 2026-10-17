@@ -4,6 +4,14 @@ from unittest.mock import AsyncMock,MagicMock,patch
 import collect_batch as batch
 
 class IdentityTests(unittest.TestCase):
+    def test_config_normalizes_fullwidth_digits(self):
+        import tempfile,json
+        from pathlib import Path
+        import local_config
+        with tempfile.TemporaryDirectory() as temp,patch.object(local_config,'ROOT',Path(temp)):
+            local_config.save_config('测试账户','１２３４５')
+            self.assertEqual(json.loads((Path(temp)/'config.local.json').read_text(encoding='utf-8'))['account_id'],'12345')
+            with self.assertRaises(ValueError):local_config.save_config(None,'12345')
     def test_equivalent_formats(self):
         for text in ('账户ID:12345','账户ID：12345','账户 ID : 12345','账户ID:\n12345','账号ID： 12345','账户ＩＤ：１２３４５','账户ID:\u200b12345'):
             self.assertEqual(batch.account_ids(text),{'12345'})

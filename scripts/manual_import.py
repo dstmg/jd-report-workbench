@@ -73,6 +73,7 @@ def import_files(payload,root=ROOT):
             folder=root/'data/reports'/f"{start.replace('-','')}_{end.replace('-','')}_人工导入"
             manifest=folder/'校验清单.json';document={'start':start,'end':end,'reports':[]}
         entries={r['family']+'/'+r['dimension']:r for r in document['reports']}
+        if any(item.get('source')!='manual' for item in entries.values()):raise ValueError('此周期已有自动采集快照，不能混合人工导入；请使用独立项目或其他周期')
         for item in entries.values():
             identity=item.get('identity')
             if not identity and item.get('task') and Path(item['task']).exists():identity=json.loads(Path(item['task']).read_text(encoding='utf-8-sig')).get('identity')

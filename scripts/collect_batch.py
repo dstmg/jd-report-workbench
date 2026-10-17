@@ -1,5 +1,5 @@
 """Generate the requested dimensions first, then download and validate together."""
-import asyncio,json,re,shutil,sys
+import asyncio,json,re,shutil,sys,unicodedata
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlsplit
@@ -15,6 +15,22 @@ START='';END=''
 ACCOUNT='';ACCOUNT_ID=''
 ACCOUNT_TABS=['账户','计划','单元','创意','关键词','商品定向','人群','流量包']
 EFFECT_TABS=[('搜索词','搜索词'),('地域','地域'),('商品定向','商品定向'),('品类','品类'),('商品','商品'),('品牌追击','品牌拦截')]
+
+def account_ids(text):
+    normalized=unicodedata.normalize('NFKC',text)
+    normalized=re.sub('[\u200b\u200c\u200d\ufeff]','',normalized)
+    return set(re.findall(r'(?:账户|账号)\s*ID\s*:\s*([0-9]+)(?![0-9])',normalized,re.I))
+
+async def verify_account(page):
+    observed=set()
+    for _ in range(20):
+        observed=account_ids(await page.locator('body').inner_text())
+        if observed=={ACCOUNT_ID}:return
+        if observed:break
+        await asyncio.sleep(.5)
+    if not observed:raise RuntimeError('无法读取页面账户ID：请确认专用Chrome已登录，并进入快车账户报表页；若账户ID仅在账户菜单中显示，请保留诊断并反馈，未生成报表')
+    if len(observed)>1:raise RuntimeError('页面显示多个账户ID，无法唯一核验当前账户，停止采集；请核对当前账户菜单')
+    raise RuntimeError(f'账号不符：配置账户ID为{ACCOUNT_ID}，页面读到{next(iter(observed))}；请核对专用Chrome当前账户，未生成本份报表')
 def identity(family,dimension,daily=True):
     result={'account':ACCOUNT,'account_id':ACCOUNT_ID,'family':family,'dimension':dimension,'start':START,'end':END,'window':30,'attribution':'下单','gifts':False,'order_state':'成交订单','daily':daily,'marketing_targets':'all'}
     if family=='账户报表' and dimension in ['创意','关键词','商品定向','人群','流量包']:result['collector_revision']=2
@@ -256,7 +272,7 @@ async def main(account_tabs=None,effect_dimensions=None):
                     if old_tab!=tab:await page.wait_for_url(lambda url:str(url)!=old_url,timeout=10000)
                     await page.locator('button[title="下载报表"]').wait_for(state='attached')
                     await tracker.idle()
-                    if f'账户ID:{ACCOUNT_ID}' not in await page.locator('body').inner_text():raise RuntimeError('账号不符')
+                    await verify_account(page)
                     readback={'policy':await policy(page),'dates':await dates(page),'goals':await account_goals(page),'url':page.url}
                     daily=page.locator('label').filter(has_text=re.compile(r'^\s*分日报告\s*$'))
                     if not await daily.locator('input').is_checked():await ui_click(page,daily,label='分日报告')

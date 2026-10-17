@@ -26,6 +26,10 @@ async def main():
                     page=await browser.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
                     await page.goto('http://127.0.0.1:5196/')
                     await page.locator('#importFiles').wait_for()
+                    await page.locator('#collect').click()
+                    await page.locator('#jobActionMessage').filter(has_text='请先人工核对登录').wait_for()
+                    await page.wait_for_timeout(2800)
+                    assert '请先人工核对登录' in await page.locator('#jobActionMessage').inner_text()
                     assert await page.locator('#collectScope option').count()==3
                     await page.locator('#collectScope').select_option('analysis')
                     assert await page.locator('#collectScope').input_value()=='analysis'

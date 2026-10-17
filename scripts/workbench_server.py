@@ -28,7 +28,10 @@ def run_job(payload):
             for line in process.stdout:
                 with LOCK:JOB['message']=line.strip();JOB['lines']=(JOB.get('lines',[])+[line.strip()])[-40:];persist_job()
             code=process.wait()
-        with LOCK:JOB['state']='complete' if code==0 else 'error';persist_job()
+        with LOCK:
+            JOB['state']='complete' if code==0 else 'error'
+            if code and not JOB.get('lines'):JOB['message']=f'采集进程退出（代码{code}），未输出诊断；请检查运行环境和依赖，已有文件保留'
+            persist_job()
     except Exception as error:
         with LOCK:JOB.update(state='error',message=str(error));persist_job()
 class Handler(BaseHTTPRequestHandler):
